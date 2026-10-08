@@ -1,0 +1,18 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    background-color: #020617;
+    color: #f8fafc;
+  }
+}
+
+@media print {
+  body {
+    background: white !important;
+    color: black !important;
+  }
+  header, aside, button, nav {
+    display: none !important;
+  }
+}

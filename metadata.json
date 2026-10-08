@@ -1,0 +1,6 @@
+{
+  "name": "Proof-of-Maintenance",
+  "description": "An Automated AI, IoT and Blockchain-Based Industrial Maintenance Verification System Using Proof of Work",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
