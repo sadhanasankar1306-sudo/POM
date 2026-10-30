@@ -13,7 +13,9 @@ import {
   Sliders,
   History,
   Shield,
-  QrCode
+  QrCode,
+  Calculator,
+  Receipt
 } from 'lucide-react';
 
 export type NavTab =
@@ -21,8 +23,10 @@ export type NavTab =
   | 'equipment'
   | 'ai-predictions'
   | 'requests'
+  | 'cost-estimation'
   | 'technician'
   | 'verification'
+  | 'billing'
   | 'blockchain'
   | 'certificates'
   | 'reports'
@@ -49,6 +53,7 @@ export const Sidebar: React.FC<Props> = ({
     requests,
     technicians,
     blockchain,
+    billingRecords,
     selectedTechnicianId,
     currentRole,
     chainIntegrity
@@ -58,6 +63,8 @@ export const Sidebar: React.FC<Props> = ({
   const pendingRequestsCount = requests.filter(r => r.status === 'Pending' || r.status === 'Assigned' || r.status === 'In Progress').length;
   const techTasksCount = requests.filter(r => r.assignedTechnicianId === selectedTechnicianId && r.status === 'Assigned').length;
   const verifiedCount = requests.filter(r => r.status === 'Verified' || r.status === 'Blockchain Recorded').length;
+  const pendingApprovalsCount = requests.filter(r => r.approvalStatus === 'Approval Required' || r.approvalStatus === 'Estimate Pending').length;
+  const pendingPaymentsCount = billingRecords?.filter(b => b.paymentStatus === 'Pending' || b.paymentStatus === 'Partially Paid' || b.paymentStatus === 'Unpaid').length || 0;
 
   const navItems = [
     {
@@ -85,6 +92,12 @@ export const Sidebar: React.FC<Props> = ({
       badge: pendingRequestsCount > 0 ? { text: `${pendingRequestsCount}`, color: 'bg-amber-500/20 text-amber-300 border-amber-500/30' } : null
     },
     {
+      id: 'cost-estimation' as NavTab,
+      label: 'Smart Cost Estimation',
+      icon: Calculator,
+      badge: pendingApprovalsCount > 0 ? { text: `${pendingApprovalsCount} Rev`, color: 'bg-amber-500/20 text-amber-300 border-amber-500/30' } : null
+    },
+    {
       id: 'technician' as NavTab,
       label: 'Technician Portal',
       icon: UserCheck,
@@ -95,6 +108,12 @@ export const Sidebar: React.FC<Props> = ({
       label: 'Verification & Effectiveness',
       icon: CheckCircle2,
       badge: { text: `${verifiedCount} Ver`, color: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' }
+    },
+    {
+      id: 'billing' as NavTab,
+      label: 'Billing & Payments',
+      icon: Receipt,
+      badge: pendingPaymentsCount > 0 ? { text: `${pendingPaymentsCount} Due`, color: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30' } : null
     },
     {
       id: 'blockchain' as NavTab,

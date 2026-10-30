@@ -17,6 +17,8 @@ import { CertificatesView } from './views/CertificatesView';
 import { ReportsView } from './views/ReportsView';
 import { AuditTrailView } from './views/AuditTrailView';
 import { SettingsView } from './views/SettingsView';
+import { SmartCostEstimationView } from './views/SmartCostEstimationView';
+import { BillingPaymentsView } from './views/BillingPaymentsView';
 
 function AppContent() {
   const { chainIntegrity } = useApp();
@@ -105,6 +107,13 @@ function AppContent() {
             />
           )}
 
+          {activeTab === 'cost-estimation' && (
+            <SmartCostEstimationView
+              onNavigate={(tab) => setActiveTab(tab)}
+              onSelectMaintenance={(id) => setSelectedMaintenanceId(id)}
+            />
+          )}
+
           {activeTab === 'technician' && (
             <TechnicianPortalView
               onNavigate={(tab) => setActiveTab(tab)}
@@ -118,6 +127,13 @@ function AppContent() {
               onNavigate={(tab) => setActiveTab(tab)}
               onSelectMaintenance={(id) => setSelectedMaintenanceId(id)}
               selectedMaintenanceId={selectedMaintenanceId}
+            />
+          )}
+
+          {activeTab === 'billing' && (
+            <BillingPaymentsView
+              onNavigate={(tab) => setActiveTab(tab)}
+              onSelectMaintenance={(id) => setSelectedMaintenanceId(id)}
             />
           )}
 

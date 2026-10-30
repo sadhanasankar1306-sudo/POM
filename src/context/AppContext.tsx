@@ -11,7 +11,18 @@ import {
   MaintenanceEvidence,
   VerificationResult,
   EffectivenessResult,
-  EquipmentStatus
+  EquipmentStatus,
+  BillingRecord,
+  BillingConfig,
+  MaintenanceCategory,
+  MaintenanceCostEstimate,
+  ActualMaintenanceCost,
+  SparePartItem,
+  CostComparison,
+  CostApprovalStatus,
+  CostApprovalHistory,
+  PaymentRecord,
+  PaymentStatus
 } from '../types';
 import {
   initialEquipment,
@@ -19,8 +30,17 @@ import {
   initialPredictions,
   initialRequests,
   buildInitialBlockchain,
-  initialAuditLogs
+  initialAuditLogs,
+  initialBillingRecords
 } from '../data/seedData';
+import {
+  defaultBillingConfig,
+  calculateEstimatedCost,
+  calculateActualCost,
+  compareCosts,
+  generateInitialEstimate,
+  formatINR
+} from '../utils/costCalculations';
 import {
   mineBlockPoW,
   MiningProgress,
@@ -45,6 +65,10 @@ interface AppContextType {
   chainIntegrity: ChainValidationResult;
   lastSimUpdate: string;
 
+  // Smart Cost & Billing
+  billingRecords: BillingRecord[];
+  billingConfig: BillingConfig;
+
   // Mining state
   isMining: boolean;
   miningProgress: MiningProgress | null;
@@ -64,10 +88,15 @@ interface AppContextType {
     equipmentId: string,
     reason: string,
     priority: MaintenanceRequest['priority'],
-    source: MaintenanceRequest['source']
+    source: MaintenanceRequest['source'],
+    customCategory?: MaintenanceCategory
   ) => MaintenanceRequest;
   assignTechnician: (requestId: string, technicianId?: string) => void;
-  submitTechnicianWork: (requestId: string, evidence: MaintenanceEvidence) => Promise<void>;
+  submitTechnicianWork: (
+    requestId: string,
+    evidence: MaintenanceEvidence,
+    actualCostInput?: Partial<ActualMaintenanceCost>
+  ) => Promise<void>;
   verifyRequest: (requestId: string) => Promise<VerificationResult>;
   mineAndRecordBlock: (requestId: string) => Promise<BlockchainBlock>;
   injectFault: (equipmentId: string, type: 'temperature' | 'vibration' | 'pressure' | 'hours') => void;
@@ -79,6 +108,24 @@ interface AppContextType {
   restoreBlockchain: () => void;
   recheckIntegrity: () => ChainValidationResult;
   resetAllData: () => void;
+
+  // Cost & Billing Actions
+  updateBillingConfig: (newConfig: Partial<BillingConfig>) => void;
+  createOrUpdateCostEstimate: (
+    maintenanceId: string,
+    estimateData: Partial<MaintenanceCostEstimate>
+  ) => void;
+  approveEstimate: (maintenanceId: string, notes?: string) => void;
+  submitActualCost: (
+    maintenanceId: string,
+    actualCost: ActualMaintenanceCost
+  ) => void;
+  approveFinalCost: (maintenanceId: string, notes?: string) => void;
+  rejectCost: (maintenanceId: string, reason: string) => void;
+  recordPayment: (
+    maintenanceId: string,
+    payment: Omit<PaymentRecord, 'id' | 'recordedBy'>
+  ) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -113,6 +160,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => {
     const saved = localStorage.getItem('pom_audit_logs');
     return saved ? JSON.parse(saved) : initialAuditLogs;
+  });
+
+  const [billingRecords, setBillingRecords] = useState<BillingRecord[]>(() => {
+    const saved = localStorage.getItem('pom_billing_records');
+    return saved ? JSON.parse(saved) : initialBillingRecords;
+  });
+
+  const [billingConfig, setBillingConfig] = useState<BillingConfig>(() => {
+    const saved = localStorage.getItem('pom_billing_config');
+    return saved ? JSON.parse(saved) : defaultBillingConfig;
   });
 
   const [notifications, setNotifications] = useState<AppNotification[]>([
@@ -170,6 +227,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     localStorage.setItem('pom_audit_logs', JSON.stringify(auditLogs));
   }, [auditLogs]);
+
+  useEffect(() => {
+    localStorage.setItem('pom_billing_records', JSON.stringify(billingRecords));
+  }, [billingRecords]);
+
+  useEffect(() => {
+    localStorage.setItem('pom_billing_config', JSON.stringify(billingConfig));
+  }, [billingConfig]);
 
   // Chain integrity
   const chainIntegrity = useMemo(() => {
@@ -297,12 +362,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return prediction;
   }, [equipment]);
 
-  // Create Maintenance Request
+  // Create Maintenance Request with Smart Cost Estimate Generation
   const createMaintenanceRequest = useCallback((
     equipmentId: string,
     reason: string,
     priority: MaintenanceRequest['priority'],
-    source: MaintenanceRequest['source']
+    source: MaintenanceRequest['source'],
+    customCategory?: MaintenanceCategory
   ): MaintenanceRequest => {
     const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
     const countToday = requests.filter(r => r.id.includes(dateStr)).length + 1;
@@ -322,6 +388,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
+    // Smart Cost Estimation calculation
+    const estimate = generateInitialEstimate(eq?.type || 'Industrial Asset', priority, billingConfig);
+    if (customCategory) {
+      estimate.maintenanceCategory = customCategory;
+    }
+
+    const billingId = `INV-${reqId}`;
+    const invoiceDate = new Date().toISOString().slice(0, 10);
+    const dueDate = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
     const newReq: MaintenanceRequest = {
       id: reqId,
       equipmentId,
@@ -330,7 +406,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       assignedTechnicianId: assignedTechId,
       createdDate: new Date().toISOString().replace('T', ' ').slice(0, 19),
       status: assignedTechId ? 'Assigned' : 'Pending',
-      source
+      source,
+      costEstimate: estimate,
+      approvalStatus: 'Estimate Pending',
+      billingId
     };
 
     // Update technician workload
@@ -361,7 +440,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       );
     }
 
+    // Create corresponding initial Billing Record
+    const newBillingRecord: BillingRecord = {
+      id: billingId,
+      maintenanceId: reqId,
+      equipmentId,
+      technicianId: assignedTechId || 'Unassigned',
+      invoiceDate,
+      dueDate,
+      costEstimate: estimate,
+      approvalStatus: 'Estimate Pending',
+      approvalHistory: [],
+      finalApprovedCost: estimate.totalEstimatedCost,
+      paymentStatus: 'Pending',
+      payments: [],
+      totalPaid: 0,
+      remainingBalance: estimate.totalEstimatedCost,
+      currency: 'INR',
+      isLocked: false
+    };
+
     setRequests(prev => [newReq, ...prev]);
+    setBillingRecords(prev => [newBillingRecord, ...prev]);
 
     addNotification(
       'maintenance',
@@ -369,15 +469,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       `Machine ${equipmentId} requires maintenance: ${reason.slice(0, 50)}...`,
       reqId
     );
+    addNotification(
+      'billing',
+      'Smart Cost Estimate Generated',
+      `Auto-calculated maintenance estimate of ${formatINR(estimate.totalEstimatedCost)} generated for ${reqId}.`,
+      reqId
+    );
     addAuditLog(
-      'Maintenance Request Created',
-      `Created request ${reqId} via ${source}`,
+      'Maintenance Request & Cost Estimate Created',
+      `Created request ${reqId} with estimate ${formatINR(estimate.totalEstimatedCost)} via ${source}`,
       equipmentId,
       reqId
     );
 
     return newReq;
-  }, [equipment, requests, technicians, addNotification, addAuditLog]);
+  }, [equipment, requests, technicians, billingConfig, addNotification, addAuditLog]);
 
   // Assign technician explicitly
   const assignTechnician = useCallback((requestId: string, technicianId?: string) => {
@@ -663,19 +769,110 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [requests, blockchain, difficultyPrefix, addNotification, addAuditLog]);
 
-  // Submit Technician Work
-  const submitTechnicianWork = useCallback(async (requestId: string, evidence: MaintenanceEvidence) => {
+  // Submit Technician Work with Smart Actual Cost Capture
+  const submitTechnicianWork = useCallback(async (
+    requestId: string,
+    evidence: MaintenanceEvidence,
+    actualCostInput?: Partial<ActualMaintenanceCost>
+  ) => {
     const req = requests.find(r => r.id === requestId);
     if (!req) return;
 
-    // 1. Mark request as Completed
+    // Calculate actual maintenance cost
+    let computedActualCost: ActualMaintenanceCost | undefined;
+    let computedCostComparison: CostComparison | undefined;
+    let computedApprovalStatus: CostApprovalStatus = req.approvalStatus || 'Actual Cost Submitted';
+
+    const labourHours = actualCostInput?.actualLabourHours ?? 2.5;
+    const hourlyRate = actualCostInput?.hourlyLabourRate ?? (req.costEstimate?.hourlyLabourRate || billingConfig.defaultHourlyRate);
+    const sparePartsItems: SparePartItem[] = actualCostInput?.spareParts ?? (
+      evidence.partsReplaced.map(p => ({
+        partName: p,
+        quantity: 1,
+        unitPrice: 850,
+        totalPrice: 850
+      }))
+    );
+    const inspectionFee = actualCostInput?.inspectionFee ?? (req.costEstimate?.inspectionFee || billingConfig.defaultInspectionFee);
+    const serviceCharge = actualCostInput?.serviceCharge ?? (req.costEstimate?.serviceCharge || billingConfig.defaultServiceCharge);
+    const additionalExpenses = actualCostInput?.additionalExpenses ?? 0;
+    const taxRate = actualCostInput?.taxRate ?? (req.costEstimate?.taxRate || billingConfig.defaultTaxRate);
+
+    const calc = calculateActualCost({
+      labourHours,
+      hourlyRate,
+      spareParts: sparePartsItems,
+      inspectionFee,
+      serviceCharge,
+      additionalExpenses,
+      taxRate
+    });
+
+    computedActualCost = {
+      actualLabourHours: labourHours,
+      hourlyLabourRate: hourlyRate,
+      actualLabourCost: calc.labourCost,
+      spareParts: sparePartsItems,
+      sparePartsCost: calc.sparePartsCost,
+      inspectionFee,
+      serviceCharge,
+      additionalExpenses,
+      additionalExpensesNotes: actualCostInput?.additionalExpensesNotes,
+      subtotal: calc.subtotal,
+      taxRate,
+      taxAmount: calc.taxAmount,
+      totalActualCost: calc.totalActualCost,
+      submittedAt: new Date().toISOString().replace('T', ' ').slice(0, 19),
+      submittedBy: req.assignedTechnicianId ? `Technician (${req.assignedTechnicianId})` : 'Assigned Technician',
+      workDescription: actualCostInput?.workDescription || evidence.workDescription
+    };
+
+    const estCost = req.costEstimate?.totalEstimatedCost || calc.totalActualCost;
+    computedCostComparison = compareCosts(estCost, calc.totalActualCost, billingConfig.budgetVarianceThresholdPercent);
+
+    if (computedCostComparison.isOverThreshold) {
+      computedApprovalStatus = 'Approval Required';
+      addNotification(
+        'billing',
+        'Budget Variance Alert: Manager Approval Required',
+        `Maintenance ${requestId} exceeded estimated budget by ₹${computedCostComparison.costDifference} (+${computedCostComparison.costVariancePercentage}%).`,
+        requestId
+      );
+    } else {
+      computedApprovalStatus = 'Actual Cost Submitted';
+      addNotification(
+        'billing',
+        'Actual Maintenance Cost Submitted',
+        `Actual cost of ₹${calc.totalActualCost.toLocaleString('en-IN')} submitted for ${requestId} (${computedCostComparison.budgetStatus}).`,
+        requestId
+      );
+    }
+
+    // 1. Mark request as Completed with actual cost
     const updatedReq: MaintenanceRequest = {
       ...req,
       evidence,
-      status: 'Completed'
+      status: 'Completed',
+      actualCost: computedActualCost,
+      costComparison: computedCostComparison,
+      approvalStatus: computedApprovalStatus
     };
 
     setRequests(prev => prev.map(r => r.id === requestId ? updatedReq : r));
+
+    // Update Billing Record
+    setBillingRecords(prev => prev.map(b => {
+      if (b.maintenanceId !== requestId) return b;
+      return {
+        ...b,
+        actualCost: computedActualCost,
+        costComparison: computedCostComparison,
+        approvalStatus: computedApprovalStatus,
+        finalApprovedCost: computedActualCost!.totalActualCost,
+        remainingBalance: Math.max(0, computedActualCost!.totalActualCost - b.totalPaid),
+        isLocked: true // technician cannot edit approved billing after submission
+      };
+    }));
 
     // 2. Make technician available
     if (req.assignedTechnicianId) {
@@ -719,8 +916,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
 
     addAuditLog(
-      'Technician Completed Maintenance',
-      `Submitted work report and after-maintenance sensor evidence for ${requestId}`,
+      'Technician Completed Maintenance & Logged Actual Cost',
+      `Submitted work report and actual charge ₹${calc.totalActualCost.toLocaleString('en-IN')} (${computedCostComparison.budgetStatus}) for ${requestId}`,
       req.equipmentId,
       requestId
     );
@@ -735,7 +932,279 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }, 500);
       }
     }, 400);
-  }, [requests, addAuditLog, verifyRequest, mineAndRecordBlock]);
+  }, [requests, billingConfig, addAuditLog, addNotification, verifyRequest, mineAndRecordBlock]);
+
+  // Cost & Billing Action Implementations
+  const updateBillingConfig = useCallback((newConfig: Partial<BillingConfig>) => {
+    setBillingConfig(prev => {
+      const updated = { ...prev, ...newConfig };
+      addAuditLog('Billing Configuration Updated', `Updated default rates: ₹${updated.defaultHourlyRate}/hr, Inspection ₹${updated.defaultInspectionFee}, GST ${updated.defaultTaxRate}%`);
+      return updated;
+    });
+  }, [addAuditLog]);
+
+  const createOrUpdateCostEstimate = useCallback((maintenanceId: string, estimateData: Partial<MaintenanceCostEstimate>) => {
+    setRequests(prev => prev.map(r => {
+      if (r.id !== maintenanceId) return r;
+      const currentEst = r.costEstimate || generateInitialEstimate('Industrial Asset', r.priority, billingConfig);
+      const merged = { ...currentEst, ...estimateData };
+      const calc = calculateEstimatedCost({
+        labourHours: merged.estimatedLabourHours,
+        hourlyRate: merged.hourlyLabourRate,
+        spareParts: merged.spareParts,
+        inspectionFee: merged.inspectionFee,
+        serviceCharge: merged.serviceCharge,
+        additionalExpenses: merged.additionalExpenses,
+        taxRate: merged.taxRate
+      });
+      const updatedEstimate: MaintenanceCostEstimate = {
+        ...merged,
+        estimatedLabourCost: calc.labourCost,
+        sparePartsCost: calc.sparePartsCost,
+        subtotal: calc.subtotal,
+        taxAmount: calc.taxAmount,
+        totalEstimatedCost: calc.totalEstimatedCost,
+        updatedAt: new Date().toISOString().replace('T', ' ').slice(0, 19)
+      };
+
+      return {
+        ...r,
+        costEstimate: updatedEstimate
+      };
+    }));
+
+    setBillingRecords(prev => prev.map(b => {
+      if (b.maintenanceId !== maintenanceId) return b;
+      const currentEst = b.costEstimate;
+      const merged = { ...currentEst, ...estimateData };
+      const calc = calculateEstimatedCost({
+        labourHours: merged.estimatedLabourHours,
+        hourlyRate: merged.hourlyLabourRate,
+        spareParts: merged.spareParts,
+        inspectionFee: merged.inspectionFee,
+        serviceCharge: merged.serviceCharge,
+        additionalExpenses: merged.additionalExpenses,
+        taxRate: merged.taxRate
+      });
+      const updatedEstimate: MaintenanceCostEstimate = {
+        ...merged,
+        estimatedLabourCost: calc.labourCost,
+        sparePartsCost: calc.sparePartsCost,
+        subtotal: calc.subtotal,
+        taxAmount: calc.taxAmount,
+        totalEstimatedCost: calc.totalEstimatedCost,
+        updatedAt: new Date().toISOString().replace('T', ' ').slice(0, 19)
+      };
+
+      return {
+        ...b,
+        costEstimate: updatedEstimate,
+        finalApprovedCost: b.approvalStatus === 'Final Cost Approved' ? b.finalApprovedCost : updatedEstimate.totalEstimatedCost,
+        remainingBalance: Math.max(0, (b.approvalStatus === 'Final Cost Approved' ? b.finalApprovedCost : updatedEstimate.totalEstimatedCost) - b.totalPaid)
+      };
+    }));
+
+    addAuditLog('Cost Estimate Updated', `Updated estimate for ${maintenanceId}`, undefined, maintenanceId);
+  }, [billingConfig, addAuditLog]);
+
+  const approveEstimate = useCallback((maintenanceId: string, notes?: string) => {
+    const targetReq = requests.find(r => r.id === maintenanceId);
+    const estAmount = targetReq?.costEstimate?.totalEstimatedCost || 0;
+
+    const historyItem: CostApprovalHistory = {
+      stage: 'Estimate',
+      status: 'Estimate Approved',
+      approvedBy: currentRole === 'Admin' ? 'System Administrator' : 'Plant Maintenance Manager',
+      role: currentRole,
+      timestamp: new Date().toISOString().replace('T', ' ').slice(0, 19),
+      notes: notes || 'Estimate verified and approved for work order dispatch',
+      approvedAmount: estAmount
+    };
+
+    setRequests(prev => prev.map(r => r.id === maintenanceId ? { ...r, approvalStatus: 'Estimate Approved' } : r));
+
+    setBillingRecords(prev => prev.map(b => {
+      if (b.maintenanceId !== maintenanceId) return b;
+      return {
+        ...b,
+        approvalStatus: 'Estimate Approved',
+        approvalHistory: [...b.approvalHistory, historyItem]
+      };
+    }));
+
+    addNotification(
+      'billing',
+      'Estimate Approved',
+      `Cost estimate of ${formatINR(estAmount)} for ${maintenanceId} was approved.`,
+      maintenanceId
+    );
+    addAuditLog('Estimate Approved', `Approved estimate ${formatINR(estAmount)} for ${maintenanceId}`, targetReq?.equipmentId, maintenanceId);
+  }, [requests, currentRole, addNotification, addAuditLog]);
+
+  const submitActualCost = useCallback((maintenanceId: string, actualCost: ActualMaintenanceCost) => {
+    const targetReq = requests.find(r => r.id === maintenanceId);
+    if (!targetReq) return;
+
+    const estCost = targetReq.costEstimate?.totalEstimatedCost || actualCost.totalActualCost;
+    const comparison = compareCosts(estCost, actualCost.totalActualCost, billingConfig.budgetVarianceThresholdPercent);
+
+    const newApprovalStatus: CostApprovalStatus = comparison.isOverThreshold ? 'Approval Required' : 'Actual Cost Submitted';
+
+    setRequests(prev => prev.map(r => {
+      if (r.id !== maintenanceId) return r;
+      return {
+        ...r,
+        actualCost,
+        costComparison: comparison,
+        approvalStatus: newApprovalStatus
+      };
+    }));
+
+    setBillingRecords(prev => prev.map(b => {
+      if (b.maintenanceId !== maintenanceId) return b;
+      return {
+        ...b,
+        actualCost,
+        costComparison: comparison,
+        approvalStatus: newApprovalStatus,
+        finalApprovedCost: actualCost.totalActualCost,
+        remainingBalance: Math.max(0, actualCost.totalActualCost - b.totalPaid),
+        isLocked: true
+      };
+    }));
+
+    if (comparison.isOverThreshold) {
+      addNotification(
+        'billing',
+        'Budget Variance Alert: Manager Approval Required',
+        `Maintenance ${maintenanceId} actual cost (${formatINR(actualCost.totalActualCost)}) exceeded estimate (${formatINR(estCost)}) by +${comparison.costVariancePercentage}%.`,
+        maintenanceId
+      );
+    } else {
+      addNotification(
+        'billing',
+        'Actual Cost Submitted',
+        `Actual maintenance charge ${formatINR(actualCost.totalActualCost)} submitted for ${maintenanceId} (${comparison.budgetStatus}).`,
+        maintenanceId
+      );
+    }
+
+    addAuditLog('Actual Cost Submitted', `Logged actual cost ${formatINR(actualCost.totalActualCost)} (${comparison.budgetStatus}, diff ${formatINR(comparison.costDifference)})`, targetReq.equipmentId, maintenanceId);
+  }, [requests, billingConfig, addNotification, addAuditLog]);
+
+  const approveFinalCost = useCallback((maintenanceId: string, notes?: string) => {
+    const targetReq = requests.find(r => r.id === maintenanceId);
+    const finalAmount = targetReq?.actualCost?.totalActualCost || targetReq?.costEstimate?.totalEstimatedCost || 0;
+
+    const historyItem: CostApprovalHistory = {
+      stage: 'Final Cost',
+      status: 'Final Cost Approved',
+      approvedBy: currentRole === 'Admin' ? 'System Administrator' : 'Plant Maintenance Manager',
+      role: currentRole,
+      timestamp: new Date().toISOString().replace('T', ' ').slice(0, 19),
+      notes: notes || 'Final cost verified against technician submission and authorized for payment.',
+      approvedAmount: finalAmount
+    };
+
+    setRequests(prev => prev.map(r => r.id === maintenanceId ? { ...r, approvalStatus: 'Final Cost Approved' } : r));
+
+    setBillingRecords(prev => prev.map(b => {
+      if (b.maintenanceId !== maintenanceId) return b;
+      return {
+        ...b,
+        approvalStatus: 'Final Cost Approved',
+        approvalHistory: [...b.approvalHistory, historyItem],
+        finalApprovedCost: finalAmount,
+        remainingBalance: Math.max(0, finalAmount - b.totalPaid),
+        isLocked: true
+      };
+    }));
+
+    addNotification(
+      'billing',
+      'Final Cost Approved',
+      `Final maintenance cost of ${formatINR(finalAmount)} for ${maintenanceId} approved by ${historyItem.approvedBy}.`,
+      maintenanceId
+    );
+    addAuditLog('Final Cost Approved', `Approved final charge ${formatINR(finalAmount)} for ${maintenanceId}`, targetReq?.equipmentId, maintenanceId);
+  }, [requests, currentRole, addNotification, addAuditLog]);
+
+  const rejectCost = useCallback((maintenanceId: string, reason: string) => {
+    const targetReq = requests.find(r => r.id === maintenanceId);
+
+    const historyItem: CostApprovalHistory = {
+      stage: 'Rejection',
+      status: 'Rejected',
+      approvedBy: currentRole === 'Admin' ? 'System Administrator' : 'Plant Maintenance Manager',
+      role: currentRole,
+      timestamp: new Date().toISOString().replace('T', ' ').slice(0, 19),
+      notes: reason || 'Cost proposal rejected by management.',
+      approvedAmount: 0
+    };
+
+    setRequests(prev => prev.map(r => r.id === maintenanceId ? { ...r, approvalStatus: 'Rejected' } : r));
+
+    setBillingRecords(prev => prev.map(b => {
+      if (b.maintenanceId !== maintenanceId) return b;
+      return {
+        ...b,
+        approvalStatus: 'Rejected',
+        approvalHistory: [...b.approvalHistory, historyItem]
+      };
+    }));
+
+    addNotification(
+      'billing',
+      'Cost Allocation Rejected',
+      `Cost allocation for ${maintenanceId} was rejected: ${reason.slice(0, 60)}`,
+      maintenanceId
+    );
+    addAuditLog('Cost Rejected', `Rejected cost for ${maintenanceId}: ${reason}`, targetReq?.equipmentId, maintenanceId);
+  }, [requests, currentRole, addNotification, addAuditLog]);
+
+  const recordPayment = useCallback((maintenanceId: string, paymentData: Omit<PaymentRecord, 'id' | 'recordedBy'>) => {
+    const targetReq = requests.find(r => r.id === maintenanceId);
+
+    const newPayment: PaymentRecord = {
+      ...paymentData,
+      id: `PAY-${Date.now().toString(36).toUpperCase()}`,
+      recordedBy: currentRole === 'Admin' ? 'Finance Administrator' : 'Plant Accounts Lead'
+    };
+
+    setBillingRecords(prev => prev.map(b => {
+      if (b.maintenanceId !== maintenanceId) return b;
+      const updatedPayments = [...b.payments, newPayment];
+      const newTotalPaid = updatedPayments.reduce((sum, p) => sum + p.amountPaid, 0);
+      const remaining = Math.max(0, b.finalApprovedCost - newTotalPaid);
+      let newPaymentStatus: PaymentStatus = 'Pending';
+      if (newTotalPaid >= b.finalApprovedCost) {
+        newPaymentStatus = 'Paid';
+      } else if (newTotalPaid > 0) {
+        newPaymentStatus = 'Partially Paid';
+      }
+
+      return {
+        ...b,
+        payments: updatedPayments,
+        totalPaid: newTotalPaid,
+        remainingBalance: remaining,
+        paymentStatus: newPaymentStatus
+      };
+    }));
+
+    addNotification(
+      'billing',
+      'Payment Recorded',
+      `Payment of ${formatINR(paymentData.amountPaid)} recorded for ${maintenanceId} via ${paymentData.paymentMethod}. Ref: ${paymentData.transactionReference}`,
+      maintenanceId
+    );
+    addAuditLog(
+      'Payment Recorded',
+      `Recorded payment ${formatINR(paymentData.amountPaid)} via ${paymentData.paymentMethod} (Ref: ${paymentData.transactionReference})`,
+      targetReq?.equipmentId,
+      maintenanceId
+    );
+  }, [requests, currentRole, addNotification, addAuditLog]);
 
   // Inject Fault into an equipment
   const injectFault = useCallback((equipmentId: string, type: 'temperature' | 'vibration' | 'pressure' | 'hours') => {
@@ -910,7 +1379,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setPredictions(initialPredictions);
     setBlockchain(buildInitialBlockchain());
     setAuditLogs(initialAuditLogs);
-    addNotification('security', 'System Reset', 'All telemetry, requests, and blockchain reseeded to initial prototype.');
+    setBillingRecords(initialBillingRecords);
+    setBillingConfig(defaultBillingConfig);
+    addNotification('security', 'System Reset', 'All telemetry, requests, billing, and blockchain reseeded to initial prototype.');
   }, [addNotification]);
 
   // IoT Simulation Ticker
@@ -977,6 +1448,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         blockchain,
         auditLogs,
         notifications,
+        billingRecords,
+        billingConfig,
         currentRole,
         selectedTechnicianId,
         simulationActive,
@@ -998,6 +1471,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         submitTechnicianWork,
         verifyRequest,
         mineAndRecordBlock,
+        updateBillingConfig,
+        createOrUpdateCostEstimate,
+        approveEstimate,
+        submitActualCost,
+        approveFinalCost,
+        rejectCost,
+        recordPayment,
         injectFault,
         normalizeEquipment,
         addEquipment,

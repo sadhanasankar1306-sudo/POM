@@ -1,4 +1,14 @@
-import { Equipment, Technician, MaintenanceRequest, AIPrediction, BlockchainBlock, AuditLog } from '../types';
+import {
+  Equipment,
+  Technician,
+  MaintenanceRequest,
+  AIPrediction,
+  BlockchainBlock,
+  AuditLog,
+  BillingRecord,
+  BillingConfig
+} from '../types';
+import { defaultBillingConfig } from '../utils/costCalculations';
 import { computeBlockHash } from '../crypto/blockchain';
 
 export const initialEquipment: Equipment[] = [
@@ -326,7 +336,30 @@ export const initialRequests: MaintenanceRequest[] = [
     assignedTechnicianId: 'T003',
     createdDate: '2026-10-08 10:15',
     status: 'Assigned',
-    source: 'AI Prediction'
+    source: 'AI Prediction',
+    approvalStatus: 'Estimate Approved',
+    billingId: 'INV-PM-M103-20261008-001',
+    costEstimate: {
+      maintenanceCategory: 'Emergency',
+      estimatedLabourHours: 3.5,
+      hourlyLabourRate: 500,
+      estimatedLabourCost: 1750,
+      spareParts: [
+        { partName: 'SKF Deep Groove Ball Bearing (6309)', quantity: 1, unitPrice: 2800, totalPrice: 2800 },
+        { partName: 'Synthetic Screw Compressor Lubricant (4L)', quantity: 1, unitPrice: 1100, totalPrice: 1100 }
+      ],
+      sparePartsCost: 3900,
+      inspectionFee: 500,
+      serviceCharge: 300,
+      additionalExpenses: 200,
+      subtotal: 6650,
+      taxRate: 18,
+      taxAmount: 1197,
+      totalEstimatedCost: 7000,
+      createdAt: '2026-10-08 10:16',
+      updatedAt: '2026-10-08 10:20',
+      estimatedBy: 'Smart AI Cost Estimation Engine'
+    }
   },
   {
     id: 'PM-M102-20261008-002',
@@ -336,7 +369,60 @@ export const initialRequests: MaintenanceRequest[] = [
     assignedTechnicianId: 'T002',
     createdDate: '2026-10-08 09:40',
     status: 'In Progress',
-    source: 'IoT Threshold Exceeded'
+    source: 'IoT Threshold Exceeded',
+    approvalStatus: 'Approval Required',
+    billingId: 'INV-PM-M102-20261008-002',
+    costEstimate: {
+      maintenanceCategory: 'Corrective',
+      estimatedLabourHours: 2.5,
+      hourlyLabourRate: 500,
+      estimatedLabourCost: 1250,
+      spareParts: [
+        { partName: 'Mechanical Shaft Seal Ring', quantity: 1, unitPrice: 1800, totalPrice: 1800 },
+        { partName: 'Impeller Casing O-Ring Gasket', quantity: 2, unitPrice: 340, totalPrice: 680 }
+      ],
+      sparePartsCost: 2480,
+      inspectionFee: 500,
+      serviceCharge: 300,
+      additionalExpenses: 0,
+      subtotal: 4530,
+      taxRate: 18,
+      taxAmount: 815,
+      totalEstimatedCost: 5000,
+      createdAt: '2026-10-08 09:42',
+      updatedAt: '2026-10-08 09:50',
+      estimatedBy: 'Smart AI Cost Estimation Engine'
+    },
+    actualCost: {
+      actualLabourHours: 3.5,
+      hourlyLabourRate: 500,
+      actualLabourCost: 1750,
+      spareParts: [
+        { partName: 'Mechanical Shaft Seal Ring', quantity: 1, unitPrice: 1800, totalPrice: 1800 },
+        { partName: 'Impeller Casing O-Ring Gasket', quantity: 2, unitPrice: 340, totalPrice: 680 },
+        { partName: 'Corrosion Inhibitor Fluid (1L)', quantity: 1, unitPrice: 420, totalPrice: 420 }
+      ],
+      sparePartsCost: 2900,
+      inspectionFee: 500,
+      serviceCharge: 300,
+      additionalExpenses: 150,
+      additionalExpensesNotes: 'Rapid courier dispatch for specialized seal',
+      subtotal: 5600,
+      taxRate: 18,
+      taxAmount: 1008,
+      totalActualCost: 5600,
+      submittedAt: '2026-10-08 11:20',
+      submittedBy: 'Sarah Jenkins (T002)',
+      workDescription: 'Replaced eroded mechanical shaft seal and worn impeller casing gasket. Flushed pump reservoir.'
+    },
+    costComparison: {
+      estimatedCost: 5000,
+      actualCost: 5600,
+      costDifference: 600,
+      costVariancePercentage: 12.0,
+      budgetStatus: 'Over Budget',
+      isOverThreshold: true
+    }
   },
   {
     id: 'PM-M101-20261007-001',
@@ -349,6 +435,57 @@ export const initialRequests: MaintenanceRequest[] = [
     source: 'Hours Interval',
     blockNumber: 1,
     blockHash: '0000a4b78912c4e5f03912da48e91cb3489e21df98716254ab819024f0c91823',
+    approvalStatus: 'Final Cost Approved',
+    billingId: 'INV-PM-M101-20261007-001',
+    costEstimate: {
+      maintenanceCategory: 'Preventive',
+      estimatedLabourHours: 2.0,
+      hourlyLabourRate: 500,
+      estimatedLabourCost: 1000,
+      spareParts: [
+        { partName: 'Polyurea Grease Cartridge (Kluber)', quantity: 1, unitPrice: 800, totalPrice: 800 },
+        { partName: 'DE/NDE Nitrile Dust Seals (x2)', quantity: 2, unitPrice: 400, totalPrice: 800 }
+      ],
+      sparePartsCost: 1600,
+      inspectionFee: 500,
+      serviceCharge: 300,
+      additionalExpenses: 0,
+      subtotal: 3400,
+      taxRate: 18,
+      taxAmount: 600,
+      totalEstimatedCost: 4000,
+      createdAt: '2026-10-07 08:35',
+      updatedAt: '2026-10-07 08:45',
+      estimatedBy: 'Smart AI Cost Estimation Engine'
+    },
+    actualCost: {
+      actualLabourHours: 2.0,
+      hourlyLabourRate: 500,
+      actualLabourCost: 1000,
+      spareParts: [
+        { partName: 'Polyurea Grease Cartridge (Kluber)', quantity: 1, unitPrice: 750, totalPrice: 750 },
+        { partName: 'DE/NDE Nitrile Dust Seals (x2)', quantity: 2, unitPrice: 380, totalPrice: 760 }
+      ],
+      sparePartsCost: 1510,
+      inspectionFee: 500,
+      serviceCharge: 300,
+      additionalExpenses: 0,
+      subtotal: 3310,
+      taxRate: 18,
+      taxAmount: 490,
+      totalActualCost: 3800,
+      submittedAt: '2026-10-07 14:20',
+      submittedBy: 'Rajesh Sharma (T001)',
+      workDescription: 'Disassembled motor non-drive end cover, flushed old grease, inspected ceramic insulated bearing, refilled with synthetic grease.'
+    },
+    costComparison: {
+      estimatedCost: 4000,
+      actualCost: 3800,
+      costDifference: -200,
+      costVariancePercentage: -5.0,
+      budgetStatus: 'Under Budget',
+      isOverThreshold: false
+    },
     evidence: {
       workDescription: 'Disassembled motor non-drive end cover, flushed old grease, inspected ceramic insulated bearing, refilled with synthetic polyurea grease, dynamic re-alignment performed.',
       beforeCondition: 'Stator temperature elevated at 84°C with audible dry friction chirp and harmonic vibration at 4.6 mm/s.',
@@ -396,6 +533,59 @@ export const initialRequests: MaintenanceRequest[] = [
     source: 'Hours Interval',
     blockNumber: 2,
     blockHash: '0000ef1298c4710a8274198b1e42a981045b67cd890123ef124590ab34289011',
+    approvalStatus: 'Final Cost Approved',
+    billingId: 'INV-PM-M104-20261005-001',
+    costEstimate: {
+      maintenanceCategory: 'Preventive',
+      estimatedLabourHours: 5.0,
+      hourlyLabourRate: 500,
+      estimatedLabourCost: 2500,
+      spareParts: [
+        { partName: 'Fuel Water Separator Cat 1R-0770', quantity: 1, unitPrice: 3200, totalPrice: 3200 },
+        { partName: 'Primary Fuel Filter 1R-0762', quantity: 1, unitPrice: 2800, totalPrice: 2800 },
+        { partName: 'Rocker Cover Gasket', quantity: 1, unitPrice: 900, totalPrice: 900 }
+      ],
+      sparePartsCost: 6900,
+      inspectionFee: 600,
+      serviceCharge: 400,
+      additionalExpenses: 0,
+      subtotal: 10400,
+      taxRate: 18,
+      taxAmount: 1872,
+      totalEstimatedCost: 12272,
+      createdAt: '2026-10-05 08:05',
+      updatedAt: '2026-10-05 08:15',
+      estimatedBy: 'Smart AI Cost Estimation Engine'
+    },
+    actualCost: {
+      actualLabourHours: 4.5,
+      hourlyLabourRate: 500,
+      actualLabourCost: 2250,
+      spareParts: [
+        { partName: 'Fuel Water Separator Cat 1R-0770', quantity: 1, unitPrice: 3200, totalPrice: 3200 },
+        { partName: 'Primary Fuel Filter 1R-0762', quantity: 1, unitPrice: 2800, totalPrice: 2800 },
+        { partName: 'Rocker Cover Gasket', quantity: 1, unitPrice: 850, totalPrice: 850 }
+      ],
+      sparePartsCost: 6850,
+      inspectionFee: 600,
+      serviceCharge: 400,
+      additionalExpenses: 0,
+      subtotal: 10100,
+      taxRate: 18,
+      taxAmount: 1700,
+      totalActualCost: 11800,
+      submittedAt: '2026-10-05 13:40',
+      submittedBy: 'David O\'Connor (T004)',
+      workDescription: 'Replaced primary and secondary diesel fuel filters, cleaned common rail pressure regulator.'
+    },
+    costComparison: {
+      estimatedCost: 12272,
+      actualCost: 11800,
+      costDifference: -472,
+      costVariancePercentage: -3.8,
+      budgetStatus: 'Under Budget',
+      isOverThreshold: false
+    },
     evidence: {
       workDescription: 'Replaced primary and secondary diesel fuel filters, cleaned common rail pressure regulator, tested auto-transfer switch under 80% artificial load bank for 45 minutes.',
       beforeCondition: 'Slight exhaust smoking on start, hunting idle governor fluctuations between 1480-1520 RPM.',
@@ -443,6 +633,59 @@ export const initialRequests: MaintenanceRequest[] = [
     source: 'IoT Threshold Exceeded',
     blockNumber: 3,
     blockHash: '00003c489201f893114a8b72e1045938acfe72039147586901823abce8492019',
+    approvalStatus: 'Final Cost Approved',
+    billingId: 'INV-PM-M105-20261004-001',
+    costEstimate: {
+      maintenanceCategory: 'Corrective',
+      estimatedLabourHours: 4.0,
+      hourlyLabourRate: 500,
+      estimatedLabourCost: 2000,
+      spareParts: [
+        { partName: 'Pillow Block Bearings UCP205 (x2)', quantity: 2, unitPrice: 1600, totalPrice: 3200 },
+        { partName: 'High Grip Drive Roller Lagging Sleeve', quantity: 1, unitPrice: 1500, totalPrice: 1500 }
+      ],
+      sparePartsCost: 4700,
+      inspectionFee: 500,
+      serviceCharge: 300,
+      additionalExpenses: 0,
+      subtotal: 7500,
+      taxRate: 18,
+      taxAmount: 1350,
+      totalEstimatedCost: 8850,
+      createdAt: '2026-10-04 11:05',
+      updatedAt: '2026-10-04 11:12',
+      estimatedBy: 'Smart AI Cost Estimation Engine'
+    },
+    actualCost: {
+      actualLabourHours: 4.5,
+      hourlyLabourRate: 500,
+      actualLabourCost: 2250,
+      spareParts: [
+        { partName: 'Pillow Block Bearings UCP205 (x2)', quantity: 2, unitPrice: 1600, totalPrice: 3200 },
+        { partName: 'High Grip Drive Roller Lagging Sleeve', quantity: 1, unitPrice: 1500, totalPrice: 1500 },
+        { partName: 'Heavy-Duty Tensioner Bolt Set', quantity: 1, unitPrice: 450, totalPrice: 450 }
+      ],
+      sparePartsCost: 5150,
+      inspectionFee: 500,
+      serviceCharge: 300,
+      additionalExpenses: 200,
+      additionalExpensesNotes: 'Emergency laser alignment tool rental',
+      subtotal: 8400,
+      taxRate: 18,
+      taxAmount: 1400,
+      totalActualCost: 9800,
+      submittedAt: '2026-10-04 16:10',
+      submittedBy: 'Elena Rostova (T005)',
+      workDescription: 'Realigned head pulley and crowned tension tail roller, adjusted dual pneumatic tensioners.'
+    },
+    costComparison: {
+      estimatedCost: 8850,
+      actualCost: 9800,
+      costDifference: 950,
+      costVariancePercentage: 10.7,
+      budgetStatus: 'Over Budget',
+      isOverThreshold: true
+    },
     evidence: {
       workDescription: 'Realigned head pulley and crowned tension tail roller, adjusted dual pneumatic tensioners to 3.5 bar, tensioned urethane belt to 0.4% elongation, cleaned optical tracking sensor.',
       beforeCondition: 'Belt wander drifting 18mm toward left guide rail, creating localized friction heat at 74°C and vibration 4.8 mm/s.',
@@ -478,6 +721,211 @@ export const initialRequests: MaintenanceRequest[] = [
       reworkRequired: false,
       evaluatedAt: '2026-10-04 16:15'
     }
+  }
+];
+
+export const initialBillingRecords: BillingRecord[] = [
+  {
+    id: 'INV-PM-M101-20261007-001',
+    maintenanceId: 'PM-M101-20261007-001',
+    equipmentId: 'M101',
+    technicianId: 'T001',
+    invoiceDate: '2026-10-07',
+    dueDate: '2026-10-21',
+    costEstimate: initialRequests[2].costEstimate!,
+    actualCost: initialRequests[2].actualCost,
+    costComparison: initialRequests[2].costComparison,
+    approvalStatus: 'Final Cost Approved',
+    approvalHistory: [
+      {
+        stage: 'Estimate',
+        status: 'Estimate Approved',
+        approvedBy: 'Plant Maintenance Manager',
+        role: 'Manager',
+        timestamp: '2026-10-07 08:45',
+        approvedAmount: 4000,
+        notes: 'Initial preventive maintenance scope approved'
+      },
+      {
+        stage: 'Final Cost',
+        status: 'Final Cost Approved',
+        approvedBy: 'Plant Maintenance Manager',
+        role: 'Manager',
+        timestamp: '2026-10-07 14:30',
+        approvedAmount: 3800,
+        notes: 'Completed under budget. Invoiced approved for settlement.'
+      }
+    ],
+    finalApprovedCost: 3800,
+    paymentStatus: 'Paid',
+    payments: [
+      {
+        id: 'PAY-M101-001',
+        amountPaid: 3800,
+        paymentDate: '2026-10-08 10:15',
+        paymentMethod: 'Bank Transfer (NEFT/RTGS)',
+        transactionReference: 'NEFT-AXIS-9920194012',
+        recordedBy: 'Finance Administrator',
+        notes: 'Full invoice settlement via corporate net banking'
+      }
+    ],
+    totalPaid: 3800,
+    remainingBalance: 0,
+    currency: 'INR',
+    isLocked: true
+  },
+  {
+    id: 'INV-PM-M104-20261005-001',
+    maintenanceId: 'PM-M104-20261005-001',
+    equipmentId: 'M104',
+    technicianId: 'T004',
+    invoiceDate: '2026-10-05',
+    dueDate: '2026-10-19',
+    costEstimate: initialRequests[3].costEstimate!,
+    actualCost: initialRequests[3].actualCost,
+    costComparison: initialRequests[3].costComparison,
+    approvalStatus: 'Final Cost Approved',
+    approvalHistory: [
+      {
+        stage: 'Estimate',
+        status: 'Estimate Approved',
+        approvedBy: 'Operations Director',
+        role: 'Admin',
+        timestamp: '2026-10-05 08:15',
+        approvedAmount: 12272
+      },
+      {
+        stage: 'Final Cost',
+        status: 'Final Cost Approved',
+        approvedBy: 'Plant Maintenance Manager',
+        role: 'Manager',
+        timestamp: '2026-10-05 14:00',
+        approvedAmount: 11800,
+        notes: 'Final load bank testing verified. Settled under budget.'
+      }
+    ],
+    finalApprovedCost: 11800,
+    paymentStatus: 'Paid',
+    payments: [
+      {
+        id: 'PAY-M104-001',
+        amountPaid: 11800,
+        paymentDate: '2026-10-06 11:30',
+        paymentMethod: 'Bank Transfer (NEFT/RTGS)',
+        transactionReference: 'RTGS-HDFC-8849102481',
+        recordedBy: 'Finance Administrator',
+        notes: 'Full payment processed on PO-2026-4401'
+      }
+    ],
+    totalPaid: 11800,
+    remainingBalance: 0,
+    currency: 'INR',
+    isLocked: true
+  },
+  {
+    id: 'INV-PM-M105-20261004-001',
+    maintenanceId: 'PM-M105-20261004-001',
+    equipmentId: 'M105',
+    technicianId: 'T005',
+    invoiceDate: '2026-10-04',
+    dueDate: '2026-10-18',
+    costEstimate: initialRequests[4].costEstimate!,
+    actualCost: initialRequests[4].actualCost,
+    costComparison: initialRequests[4].costComparison,
+    approvalStatus: 'Final Cost Approved',
+    approvalHistory: [
+      {
+        stage: 'Estimate',
+        status: 'Estimate Approved',
+        approvedBy: 'Plant Maintenance Manager',
+        role: 'Manager',
+        timestamp: '2026-10-04 11:15',
+        approvedAmount: 8850
+      },
+      {
+        stage: 'Final Cost',
+        status: 'Final Cost Approved',
+        approvedBy: 'Operations Director',
+        role: 'Admin',
+        timestamp: '2026-10-04 17:00',
+        approvedAmount: 9800,
+        notes: 'Variance +10.7% justified due to laser alignment rental requirement.'
+      }
+    ],
+    finalApprovedCost: 9800,
+    paymentStatus: 'Partially Paid',
+    payments: [
+      {
+        id: 'PAY-M105-001',
+        amountPaid: 5000,
+        paymentDate: '2026-10-07 15:40',
+        paymentMethod: 'UPI',
+        transactionReference: 'UPI-IND-7749102931@icici',
+        recordedBy: 'Accounts Lead',
+        notes: 'Initial milestone payment'
+      }
+    ],
+    totalPaid: 5000,
+    remainingBalance: 4800,
+    currency: 'INR',
+    isLocked: true
+  },
+  {
+    id: 'INV-PM-M102-20261008-002',
+    maintenanceId: 'PM-M102-20261008-002',
+    equipmentId: 'M102',
+    technicianId: 'T002',
+    invoiceDate: '2026-10-08',
+    dueDate: '2026-10-22',
+    costEstimate: initialRequests[1].costEstimate!,
+    actualCost: initialRequests[1].actualCost,
+    costComparison: initialRequests[1].costComparison,
+    approvalStatus: 'Approval Required',
+    approvalHistory: [
+      {
+        stage: 'Estimate',
+        status: 'Estimate Approved',
+        approvedBy: 'Plant Maintenance Manager',
+        role: 'Manager',
+        timestamp: '2026-10-08 09:50',
+        approvedAmount: 5000
+      }
+    ],
+    finalApprovedCost: 5600,
+    paymentStatus: 'Pending',
+    payments: [],
+    totalPaid: 0,
+    remainingBalance: 5600,
+    currency: 'INR',
+    isLocked: false
+  },
+  {
+    id: 'INV-PM-M103-20261008-001',
+    maintenanceId: 'PM-M103-20261008-001',
+    equipmentId: 'M103',
+    technicianId: 'T003',
+    invoiceDate: '2026-10-08',
+    dueDate: '2026-10-22',
+    costEstimate: initialRequests[0].costEstimate!,
+    approvalStatus: 'Estimate Approved',
+    approvalHistory: [
+      {
+        stage: 'Estimate',
+        status: 'Estimate Approved',
+        approvedBy: 'Plant Maintenance Manager',
+        role: 'Manager',
+        timestamp: '2026-10-08 10:20',
+        approvedAmount: 7000,
+        notes: 'Priority emergency repair approved. Technician dispatched.'
+      }
+    ],
+    finalApprovedCost: 7000,
+    paymentStatus: 'Pending',
+    payments: [],
+    totalPaid: 0,
+    remainingBalance: 7000,
+    currency: 'INR',
+    isLocked: false
   }
 ];
 

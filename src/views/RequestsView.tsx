@@ -14,8 +14,10 @@ import {
   ArrowRight,
   ExternalLink,
   ChevronRight,
-  Sparkles
+  Sparkles,
+  IndianRupee
 } from 'lucide-react';
+import { formatINR } from '../utils/costCalculations';
 
 interface Props {
   onNavigate: (tab: any) => void;
@@ -184,6 +186,22 @@ export const RequestsView: React.FC<Props> = ({ onNavigate, onSelectMaintenance 
                   <span>
                     Location: <strong className="text-slate-300">{eq?.location}</strong>
                   </span>
+                  {req.costEstimate && (
+                    <span className="flex items-center gap-1.5 font-mono text-cyan-300">
+                      <IndianRupee className="w-3 h-3 text-cyan-400" />
+                      <span>{formatINR(req.actualCost?.totalActualCost || req.costEstimate.totalEstimatedCost)}</span>
+                      <span className="text-slate-500 text-[10px]">({req.actualCost ? 'Actual' : 'Est'})</span>
+                    </span>
+                  )}
+                  {req.costComparison && (
+                    <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${
+                      req.costComparison.budgetStatus === 'Over Budget'
+                        ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                        : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                    }`}>
+                      {req.costComparison.budgetStatus}
+                    </span>
+                  )}
                 </div>
               </div>
 

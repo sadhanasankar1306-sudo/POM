@@ -15,8 +15,10 @@ import {
   Flame,
   Zap,
   ExternalLink,
-  ChevronRight
+  ChevronRight,
+  IndianRupee
 } from 'lucide-react';
+import { formatINR } from '../utils/costCalculations';
 
 interface Props {
   onNavigate: (tab: any) => void;
@@ -495,6 +497,7 @@ export const DashboardView: React.FC<Props> = ({ onNavigate, onSelectMaintenance
                 <th className="pb-3 px-3">Equipment</th>
                 <th className="pb-3 px-3">Technician</th>
                 <th className="pb-3 px-3">Date</th>
+                <th className="pb-3 px-3 text-right">Cost (₹)</th>
                 <th className="pb-3 px-3">Status</th>
                 <th className="pb-3 px-3">Effectiveness</th>
                 <th className="pb-3 px-3">Blockchain Status</th>
@@ -505,6 +508,7 @@ export const DashboardView: React.FC<Props> = ({ onNavigate, onSelectMaintenance
               {requests.slice(0, 6).map(req => {
                 const eq = equipment.find(e => e.id === req.equipmentId);
                 const hasBlock = req.blockNumber !== undefined;
+                const costVal = req.actualCost?.totalActualCost || req.costEstimate?.totalEstimatedCost || 0;
 
                 return (
                   <tr key={req.id} className="hover:bg-slate-800/40 transition">
@@ -520,6 +524,12 @@ export const DashboardView: React.FC<Props> = ({ onNavigate, onSelectMaintenance
                     </td>
                     <td className="py-3 px-3 text-slate-400 font-mono">
                       {req.createdDate.slice(0, 10)}
+                    </td>
+                    <td className="py-3 px-3 text-right font-mono">
+                      <span className="font-bold text-slate-200">{formatINR(costVal)}</span>
+                      <span className="text-[10px] text-slate-500 block">
+                        {req.actualCost ? 'Actual' : 'Estimated'}
+                      </span>
                     </td>
                     <td className="py-3 px-3">
                       <span className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase tracking-wider ${
